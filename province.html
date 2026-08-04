@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>县级视图 · 内陆高密度低发展区带</title>
+<script src="./echarts.min.js"></script>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e8eb;--muted:#8b95a5;--accent:#ffb454}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  h1{margin:0;font-size:17px;font-weight:600}
+  a{color:var(--accent);text-decoration:none;font-size:13px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .wrap{display:grid;grid-template-columns:1fr 280px;gap:14px;padding:14px 22px;align-items:start}
+  @media(max-width:880px){.wrap{grid-template-columns:1fr}}
+  #map{width:100%;height:600px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  table.bv{border-collapse:collapse;margin:0 auto}
+  table.bv td{width:32px;height:26px;border:1px solid var(--bg)}
+  .ax{color:var(--muted);font-size:11px;text-align:center;margin-top:4px}
+  .note{color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:10px}
+  #loading{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title">县级视图</h1>
+    <div class="sub" id="sub">双变量填色：红=密而弱，蓝=密而强。点击区县进入详情。</div>
+  </div>
+  <a href="index.html">← 返回省级入口</a>
+</header>
+<div class="wrap">
+  <div class="card"><div id="loading">加载本省县界…</div><div id="map" style="display:none"></div></div>
+  <div class="card">
+    <h3 style="margin:0 0 10px;color:var(--accent);font-size:13px">双变量着色</h3>
+    <table class="bv" id="bvtab"></table>
+    <div class="ax">← 人口密度：低·中·高</div>
+    <div class="ax">↑ 发展指数：低·中·高</div>
+    <div class="note">仅本抽样区县有颜色，其余为灰底上下文。扩到全县后即可全填。</div>
+  </div>
+</div>
+<script>
+const MATRIX=[['#6b3a3a','#a84545','#ff5a5a'],['#7a6a3a','#b08a3a','#e0b03a'],['#3a6b5a','#3a8a7a','#4aa3c0']];
+const DEV_LOW=50000,DEV_MID=80000,DEN_LOW=450,DEN_MID=700;
+const devTier=d=>d<DEV_LOW?0:d<DEV_MID?1:2, denTier=d=>d<DEN_LOW?0:d<DEN_MID?1:2;
+(function(){const t=document.getElementById('bvtab');let h='';for(let r=2;r>=0;r--){h+='<tr>';for(let c=0;c<3;c++)h+=`<td style="background:${MATRIX[r][c]}"></td>`;h+='</tr>';}t.innerHTML=h;})();
+const code=new URLSearchParams(location.search).get('code')||'41';
+(async()=>{
+  let DATA=[];try{DATA=await(await fetch('./data.json')).json();}catch(e){}
+  let geo={type:'FeatureCollection',features:[]};
+  try{geo=await(await fetch(`./provinces/${code}.geojson`)).json();}catch(e){}
+  // 省名
+  const provName=(geo.features.find(f=>f.properties&&f.properties.level==='province')||{}).properties;
+  document.getElementById('title').textContent='县级视图 · '+(provName?provName.name:'')+'（'+code+'）';
+  const name2d={};DATA.forEach(d=>name2d[d.name]=d);
+  const mapData=geo.features.map(f=>{
+    const nm=f.properties&&f.properties.name;const d=name2d[nm];
+    return {name:nm,value:d?[d.dens,d.dev]:[0,0],itemStyle:{color:d?MATRIX[devTier(d.dev)][denTier(d.dens)]:'#171a21'}};
+  });
+  document.getElementById('loading').style.display='none';
+  document.getElementById('map').style.display='block';
+  echarts.registerMap('pv',geo);
+  const chart=echarts.init(document.getElementById('map'),'dark');
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'item',backgroundColor:'#1e222b',borderColor:'#2a2f3a',textStyle:{color:'#e6e8eb',fontSize:12},
+      formatter:p=>{const d=name2d[p.name];if(!d)return `<b>${p.name}</b><br/>（未抽样）`;
+        return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元<br/>自然条件：${d.nat}`;}},
+    series:[{type:'map',map:'pv',roam:true,zoom:1.1,
+      itemStyle:{borderColor:'#2a2f3a',borderWidth:0.4},
+      emphasis:{label:{show:false},itemStyle:{areaColor:'#33415a'}},
+      data:mapData}]
+  });
+  chart.on('click',p=>{if(name2d[p.name])location.href=`place.html?name=${encodeURIComponent(p.name)}`;});
+  window.addEventListener('resize',()=>chart.resize());
+})();
+</script>
+</body>
+</html>
