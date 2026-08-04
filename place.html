@@ -119,7 +119,7 @@ const name=decodeURIComponent(new URLSearchParams(location.search).get('name')||
   // 省内迷你图
   echarts.registerMap('mini',geo);
   const mc=echarts.init(document.getElementById('minimap'),'dark');
-  const md=geo.features.map(f=>({name:f.properties&&f.properties.name,itemStyle:{color:f.properties&&f.properties.name===d.name?'#ff5a5a':'#171a21'}}));
+  const md=geo.features.map(f=>({name:f.properties&&f.properties.name,itemStyle:{areaColor:f.properties&&f.properties.name===d.name?'#ff5a5a':'#171a21'}}));
   mc.setOption({backgroundColor:'transparent',
     tooltip:{trigger:'item',formatter:p=>p.name},
     series:[{type:'map',map:'mini',roam:true,zoom:1.1,itemStyle:{borderColor:'#2a2f3a',borderWidth:0.4},
