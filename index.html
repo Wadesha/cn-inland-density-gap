@@ -62,7 +62,7 @@ const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42
     let pc=null; for(const k in PROV_MAP) if(PROV_MAP[k]===prefix) pc=k;
     const c=pc?cnt[pc]:0;
     const color = c>0 ? `rgba(255,90,90,${0.25+0.75*c/maxc})` : '#171a21';
-    return {name:nm, prefix, value:c, itemStyle:{color}};
+    return {name:nm, prefix, value:c, itemStyle:{areaColor:color}};
   });
 
   document.getElementById('loading').style.display='none';
