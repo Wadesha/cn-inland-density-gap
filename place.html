@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>单地详情 · 内陆高密度低发展区带</title>
+<script src="./echarts.min.js"></script>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e8eb;--muted:#8b95a5;--accent:#ffb454;--weak:#ff5a5a;--rich:#5aa9ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  h1{margin:0;font-size:18px;font-weight:600}
+  .badge{font-size:11px;padding:2px 9px;border-radius:20px;margin-left:8px;vertical-align:middle}
+  .b-poor{background:rgba(255,90,90,.16);color:var(--weak);border:1px solid var(--weak)}
+  .b-rich{background:rgba(90,169,255,.16);color:var(--rich);border:1px solid var(--rich)}
+  a{color:var(--accent);text-decoration:none;font-size:13px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 22px;align-items:start}
+  @media(max-width:880px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .card h3{margin:0 0 10px;font-size:13px;color:var(--accent)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .mc{background:var(--panel2,#1e222b);border:1px solid var(--line);border-radius:8px;padding:10px}
+  .mc .v{font-size:18px;font-weight:600}
+  .mc .k{color:var(--muted);font-size:11px;margin-top:3px}
+  table.bv{border-collapse:collapse;margin:0 auto}
+  table.bv td{width:40px;height:34px;border:1px solid var(--bg);text-align:center}
+  .hl{outline:3px solid var(--accent);outline-offset:-3px}
+  .mech{margin-top:4px;padding:10px;background:#1e222b;border-left:3px solid var(--weak);border-radius:6px;font-size:12.5px;line-height:1.6}
+  .mech.rich{border-left-color:var(--rich)}
+  .cmp{display:flex;gap:10px}
+  .cmp .c{flex:1;background:#1e222b;border:1px solid var(--line);border-radius:8px;padding:10px}
+  .cmp .c .n{font-weight:600}
+  .cmp .c .s{color:var(--muted);font-size:12px;margin-top:4px}
+  #minimap{width:100%;height:300px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+  #loading{padding:40px;text-align:center;color:var(--muted)}
+  .note{color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1 id="title">单地详情</h1><div class="sub" id="sub"></div></div>
+  <div><a id="back" href="index.html">← 省级入口</a></div>
+</header>
+<div id="loading" style="padding:40px;text-align:center;color:var(--muted)">加载…</div>
+<div class="wrap" id="body" style="display:none">
+  <div class="card">
+    <h3>在双变量矩阵中的位置</h3>
+    <table class="bv" id="bvtab"></table>
+    <div class="ax" style="color:var(--muted);font-size:11px;text-align:center;margin-top:4px">↑ 发展指数　← 人口密度</div>
+    <div class="grid3" id="metrics" style="margin-top:14px"></div>
+  </div>
+  <div class="card">
+    <h3>在省内的位置</h3>
+    <div id="minimap"></div>
+    <div class="note">红=本区县，灰=同省其他区县（未抽样）。</div>
+  </div>
+  <div class="card">
+    <h3>自然条件（密度之因）</h3>
+    <div id="nat" class="note" style="font-size:13px;color:var(--txt)"></div>
+    <div class="mech" id="mech"></div>
+  </div>
+  <div class="card">
+    <h3>对照：同为内陆高密度，但发展不同</h3>
+    <div class="cmp" id="cmp"></div>
+    <div class="note" id="cmpnote"></div>
+  </div>
+</div>
+<script>
+const MATRIX=[['#6b3a3a','#a84545','#ff5a5a'],['#7a6a3a','#b08a3a','#e0b03a'],['#3a6b5a','#3a8a7a','#4aa3c0']];
+const DEV_LOW=50000,DEV_MID=80000,DEN_LOW=450,DEN_MID=700;
+const devTier=d=>d<DEV_LOW?0:d<DEV_MID?1:2, denTier=d=>d<DEN_LOW?0:d<DEN_MID?1:2;
+const TIER=['低','中','高'];
+const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36'};
+const name=decodeURIComponent(new URLSearchParams(location.search).get('name')||'');
+(async()=>{
+  let DATA=[];try{DATA=await(await fetch('./data.json')).json();}catch(e){}
+  const d=DATA.find(x=>x.name===name);
+  if(!d){document.getElementById('loading').textContent='未找到：'+name;return;}
+  const prefix=PROV_MAP[d.prov]||'41';
+  let geo={type:'FeatureCollection',features:[]};
+  try{geo=await(await fetch(`./provinces/${prefix}.geojson`)).json();}catch(e){}
+
+  document.getElementById('title').innerHTML=`${d.name} <span class="badge ${d.type==='poor'?'b-poor':'b-rich'}">${d.type==='poor'?'密而弱':'密而强'}</span>`;
+  document.getElementById('sub').textContent=`${d.prov} · 人口密度 ${d.dens} 人/km² · 人均GDP ${d.dev.toLocaleString()} 元`;
+  document.getElementById('back').href=`province.html?code=${prefix}`;
+  document.getElementById('loading').style.display='none';
+  document.getElementById('body').style.display='grid';
+
+  // 矩阵高亮
+  const dt=devTier(d.dev),dn=denTier(d.dens);
+  let h='';for(let r=2;r>=0;r--){h+='<tr>';for(let c=0;c<3;c++){const hl=(r===dt&&c===dn)?' class="hl"':'';h+=`<td${hl} style="background:${MATRIX[r][c]}"></td>`;}h+='</tr>';}
+  document.getElementById('bvtab').innerHTML=h;
+
+  // 指标卡
+  document.getElementById('metrics').innerHTML=`
+    <div class="mc"><div class="v">${d.dens}</div><div class="k">人口密度（人/km²）· ${TIER[dn]}</div></div>
+    <div class="mc"><div class="v">${(d.dev/10000).toFixed(1)}w</div><div class="k">人均GDP（元）· ${TIER[dt]}</div></div>
+    <div class="mc"><div class="v">${d.type==='poor'?'弱':'强'}</div><div class="k">发展类型</div></div>`;
+
+  // 自然 + 机制
+  document.getElementById('nat').textContent=d.nat;
+  const mech=d.type==='poor'
+    ? '农耕承载力高 → 历史人口密；非农产业与枢纽可达性弱 → 人均附加值低。土地太能养人，反而把劳动力钉在农业上（农耕锁定）。密度量「能养多少人」，发展量「每人创造多少非农业价值」。'
+    : '同为内陆高密度，但枢纽/工业/服务结构强 → 人均附加值高。证明密度本身不注定贫困，结构才分化发展。';
+  const me=document.getElementById('mech');me.className='mech'+(d.type==='rich'?' rich':'');me.textContent=mech;
+
+  // 对照
+  const rich=DATA.filter(x=>x.type==='rich');
+  const peer=(rich.filter(x=>x.prov===d.prov)[0])||rich.slice().sort((a,b)=>b.dev-a.dev)[0];
+  document.getElementById('cmp').innerHTML=`
+    <div class="c"><div class="n" style="color:${d.type==='poor'?'var(--weak)':'var(--rich)'}">${d.name}</div>
+      <div class="s">密度 ${d.dens} · 人均 ${(d.dev/10000).toFixed(1)}w</div></div>
+    <div class="c"><div class="n" style="color:var(--rich)">${peer.name}</div>
+      <div class="s">密度 ${peer.dens} · 人均 ${(peer.dev/10000).toFixed(1)}w</div></div>`;
+  document.getElementById('cmpnote').textContent=`同为内陆高密度：${d.name} 人均仅 ${(d.dev/10000).toFixed(1)}w，而 ${peer.name} 达 ${(peer.dev/10000).toFixed(1)}w——差距来自产业结构与枢纽可达性，而非人口密度。`;
+
+  // 省内迷你图
+  echarts.registerMap('mini',geo);
+  const mc=echarts.init(document.getElementById('minimap'),'dark');
+  const md=geo.features.map(f=>({name:f.properties&&f.properties.name,itemStyle:{color:f.properties&&f.properties.name===d.name?'#ff5a5a':'#171a21'}}));
+  mc.setOption({backgroundColor:'transparent',
+    tooltip:{trigger:'item',formatter:p=>p.name},
+    series:[{type:'map',map:'mini',roam:true,zoom:1.1,itemStyle:{borderColor:'#2a2f3a',borderWidth:0.4},
+      emphasis:{label:{show:false}},data:md}]});
+  window.addEventListener('resize',()=>mc.resize());
+})();
+</script>
+</body>
+</html>
