@@ -54,12 +54,16 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   try{geo=await(await fetch(`./provinces/${code}.geojson`)).json();}catch(e){}
   // 省名
   const provName=(geo.features.find(f=>f.properties&&f.properties.level==='province')||{}).properties;
-  document.getElementById('title').textContent='县级视图 · '+(provName?provName.name:'')+'（'+code+'）';
+    document.getElementById('title').textContent='县级视图 · '+(provName?provName.name:'')+'（'+code+'）';
   const name2d={};DATA.forEach(d=>name2d[d.name]=d);
   const mapData=geo.features.map(f=>{
     const nm=f.properties&&f.properties.name;const d=name2d[nm];
     return {name:nm,value:d?[d.dens,d.dev]:[0,0],itemStyle:{color:d?MATRIX[devTier(d.dev)][denTier(d.dens)]:'#171a21'}};
   });
+  const matched=mapData.filter(m=>m.itemStyle.color!=='#171a21').length;
+  document.getElementById('sub').textContent = matched>0
+    ? `双变量填色：红=密而弱，蓝=密而强；灰底=样本未覆盖。点击区县进入详情。`
+    : `本省份暂无样本数据（请返回选红色省份）。`;
   document.getElementById('loading').style.display='none';
   document.getElementById('map').style.display='block';
   echarts.registerMap('pv',geo);
@@ -67,7 +71,7 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   chart.setOption({
     backgroundColor:'transparent',
     tooltip:{trigger:'item',backgroundColor:'#1e222b',borderColor:'#2a2f3a',textStyle:{color:'#e6e8eb',fontSize:12},
-      formatter:p=>{const d=name2d[p.name];if(!d)return `<b>${p.name}</b><br/>（未抽样）`;
+      formatter:p=>{const d=name2d[p.name];if(!d)return `<b>${p.name}</b><br/><span style="color:#8b95a5">样本未覆盖</span>`;
         return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元<br/>自然条件：${d.nat}`;}},
     series:[{type:'map',map:'pv',roam:true,zoom:1.1,
       itemStyle:{borderColor:'#2a2f3a',borderWidth:0.4},
