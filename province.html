@@ -56,9 +56,22 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   const provName=(geo.features.find(f=>f.properties&&f.properties.level==='province')||{}).properties;
     document.getElementById('title').textContent='县级视图 · '+(provName?provName.name:'')+'（'+code+'）';
   const name2d={};DATA.forEach(d=>name2d[d.name]=d);
+  // 市 adcode 前缀(4位) → 市名：把"市级样本"下钻着色到其下各县
+  const cityNameByPrefix={};
+  geo.features.forEach(f=>{const ad=f.properties&&f.properties.adcode,lv=f.properties&&f.properties.level;
+    if(lv==='city')cityNameByPrefix[String(ad).slice(0,4)]=f.properties.name;});
+  // 县→有效样本：自身抽样，否则归属的市级抽样
+  const effOf=(nm,ad)=>{ if(name2d[nm])return name2d[nm];
+    const cp=ad?String(ad).slice(0,4):null;
+    if(cp&&cityNameByPrefix[cp]&&name2d[cityNameByPrefix[cp]])return name2d[cityNameByPrefix[cp]];
+    return null; };
+  // 市多边形置于县之下，避免盖住县着色
+  geo.features.sort((a,b)=>((a.properties.level==='city')?0:1)-((b.properties.level==='city')?0:1));
   const mapData=geo.features.map(f=>{
-    const nm=f.properties&&f.properties.name;const d=name2d[nm];
-    return {name:nm,value:d?[d.dens,d.dev]:[0,0],itemStyle:{areaColor:d?MATRIX[devTier(d.dev)][denTier(d.dens)]:'#171a21'}};
+    const nm=f.properties&&f.properties.name, ad=f.properties&&f.properties.adcode;
+    const eff=effOf(nm,ad);
+    const color=eff?MATRIX[devTier(eff.dev)][denTier(eff.dens)]:'#171a21';
+    return {name:nm, value:eff?[eff.dens,eff.dev]:[0,0], link:eff?eff.name:null, itemStyle:{areaColor:color}};
   });
   const matched=mapData.filter(m=>m.itemStyle.areaColor!=='#171a21').length;
   document.getElementById('sub').textContent = matched>0
@@ -71,14 +84,15 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   chart.setOption({
     backgroundColor:'transparent',
     tooltip:{trigger:'item',backgroundColor:'#1e222b',borderColor:'#2a2f3a',textStyle:{color:'#e6e8eb',fontSize:12},
-      formatter:p=>{const d=name2d[p.name];if(!d)return `<b>${p.name}</b><br/><span style="color:#8b95a5">样本未覆盖</span>`;
+      formatter:p=>{const d=p.data.link?name2d[p.data.link]:name2d[p.name];
+        if(!d)return `<b>${p.name}</b><br/><span style="color:#8b95a5">样本未覆盖</span>`;
         return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元<br/>自然条件：${d.nat}`;}},
     series:[{type:'map',map:'pv',roam:true,zoom:1.1,
       itemStyle:{borderColor:'#2a2f3a',borderWidth:0.4},
       emphasis:{label:{show:false},itemStyle:{areaColor:'#33415a'}},
       data:mapData}]
   });
-  chart.on('click',p=>{if(name2d[p.name])location.href=`place.html?name=${encodeURIComponent(p.name)}`;});
+  chart.on('click',p=>{if(p.data.link)location.href=`place.html?name=${encodeURIComponent(p.data.link)}`;});
   window.addEventListener('resize',()=>chart.resize());
 })();
 </script>
