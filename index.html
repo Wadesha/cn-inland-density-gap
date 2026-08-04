@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>内陆高密度·低发展区带 · 双变量地图</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="./echarts.min.js"></script>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e8eb;--muted:#8b95a5;--accent:#ffb454}
   *{box-sizing:border-box}
@@ -53,7 +53,7 @@
     </div>
     <div style="margin-top:10px">
       <span class="pill">密度阈值已剔除稀疏侧</span>
-      <span class="pill">底图运行时从 DataV 加载</span>
+      <span class="pill">依赖已本地化（无外部CDN）</span>
     </div>
   </div>
 </div>
@@ -69,11 +69,10 @@ const DEV_LOW=50000, DEV_MID=80000, DEN_LOW=450, DEN_MID=700;
 const devTier=d=> d<DEV_LOW?0 : d<DEV_MID?1 : 2;
 const denTier=d=> d<DEN_LOW?0 : d<DEN_MID?1 : 2;
 
-// 图例表
 (function(){
   const t=document.getElementById('bvtab');
   let h='';
-  for(let r=2;r>=0;r--){ // 发展高在上
+  for(let r=2;r>=0;r--){
     h+='<tr>';
     for(let c=0;c<3;c++) h+=`<td style="background:${MATRIX[r][c]}"></td>`;
     h+='</tr>';
@@ -81,26 +80,12 @@ const denTier=d=> d<DEN_LOW?0 : d<DEN_MID?1 : 2;
   t.innerHTML=h;
 })();
 
-const PROV=[110000,120000,130000,140000,150000,210000,220000,230000,310000,320000,
-  330000,340000,350000,360000,370000,410000,420000,430000,440000,450000,460000,
-  500000,510000,520000,530000,540000,610000,620000,630000,640000,650000];
-
-async function loadChina(){
-  const feats=[];
-  for(const code of PROV){
-    try{
-      const r=await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`);
-      const j=await r.json();
-      if(j&&j.features) feats.push(...j.features);
-    }catch(e){ /* 单省失败忽略 */ }
-  }
-  return {type:'FeatureCollection',features:feats};
-}
-
 (async()=>{
   let DATA=[];
   try{ DATA=await (await fetch('./data.json')).json(); }catch(e){}
-  const geo=await loadChina();
+  let geo={type:'FeatureCollection',features:[]};
+  try{ geo=await (await fetch('./china-counties.geojson')).json(); }catch(e){}
+
   const name2c={};
   geo.features.forEach(f=>{ if(f.properties&&f.properties.name&&f.properties.center) name2c[f.properties.name]=f.properties.center; });
 
@@ -114,8 +99,12 @@ async function loadChina(){
     };
   }).filter(Boolean);
 
+  const miss=DATA.length-bubbles.length;
+  if(miss>0) console.warn('未匹配底图质心的区县数：',miss);
+
   document.getElementById('loading').style.display='none';
   document.getElementById('map').style.display='block';
+  echarts.registerMap('china', geo);
   const chart=echarts.init(document.getElementById('map'),'dark');
   chart.setOption({
     backgroundColor:'transparent',
