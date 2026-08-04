@@ -3,135 +3,89 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>内陆高密度·低发展区带 · 双变量地图</title>
+<title>内陆高密度·低发展区带 · 省级入口</title>
 <script src="./echarts.min.js"></script>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e8eb;--muted:#8b95a5;--accent:#ffb454}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);
-    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
   header{padding:16px 22px;border-bottom:1px solid var(--line)}
   h1{margin:0;font-size:18px;font-weight:600}
   .sub{color:var(--muted);margin-top:6px;font-size:12.5px}
-  .wrap{display:grid;grid-template-columns:1fr 280px;gap:14px;padding:14px 22px;align-items:start}
+  .wrap{display:grid;grid-template-columns:1fr 300px;gap:14px;padding:14px 22px;align-items:start}
   @media(max-width:880px){.wrap{grid-template-columns:1fr}}
-  #map{width:100%;height:620px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  #map{width:100%;height:600px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
   .legend h3{margin:0 0 10px;font-size:13px;color:var(--accent)}
-  table.bv{border-collapse:collapse;margin:0 auto}
-  table.bv td{width:34px;height:28px;border:1px solid var(--bg)}
-  .ax{color:var(--muted);font-size:11px;text-align:center;margin-top:4px}
   .note{color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:12px}
+  .rank{margin-top:10px}
+  .rank .r{display:flex;justify-content:space-between;padding:5px 8px;border-radius:6px;cursor:pointer}
+  .rank .r:hover{background:#1e222b}
+  a{color:var(--accent);text-decoration:none}
   #loading{padding:40px;text-align:center;color:var(--muted)}
-  .pill{display:inline-block;background:var(--panel);border:1px solid var(--line);border-radius:20px;
-    padding:2px 9px;font-size:11px;color:var(--muted);margin:2px 4px 2px 0}
 </style>
 </head>
 <body>
 <header>
-  <h1>内陆高密度 · 低发展区带 · 双变量地图</h1>
-  <div class="sub">考察范围：胡线以东的内陆。气泡位置=真实县界质心，颜色=密度×发展双变量；<b style="color:#ff5a5a">红=密而弱（重点）</b>，蓝=密而强（同内陆对照）。稀疏区县不在数据集内。</div>
+  <h1>内陆高密度 · 低发展区带</h1>
+  <div class="sub">省级入口（首屏仅加载省级底图，几百 KB）。颜色越红 = 该省抽样的「密而弱」区县越多。点击省份进入县级视图。</div>
 </header>
-
 <div class="wrap">
-  <div class="card">
-    <div id="loading">正在加载县级底图与数据…</div>
-    <div id="map" style="display:none"></div>
-  </div>
-
+  <div class="card"><div id="loading">加载省级底图…</div><div id="map" style="display:none"></div></div>
   <div class="card legend">
-    <h3>双变量着色（看红色角）</h3>
-    <table class="bv" id="bvtab"></table>
-    <div class="ax">← 人口密度：低 · 中 · 高 →</div>
-    <div class="ax">↑ 发展指数（人均GDP）：低 · 中 · 高</div>
+    <h3>说明</h3>
     <div class="note">
-      机制：人口密度的自然成因=农耕承载力（平坦冲积土+水/灌+积温两熟）；发展指数=非农附加值人均占有。
-      二者是两条因果链，「密而弱」是错配而非矛盾——农耕锁定把劳动力钉在农业上。
-      蓝点为同内陆高密度但枢纽/工业强的区县，证明密度不注定贫困。
-      <br><br>
-      ⚠️ 数据为示意样本（量级近似，非精确统计）。下一步接入七普人口密度+统计年鉴县级人均GDP/非农就业，并扩到全县。
+      结构：<b>省入口 → 省内地县填色 → 单地详情页</b>。逐省加载，避免一次性拉取全县界（26MB）。
+      红 = 密而弱（重点），蓝 = 密而强（同内陆对照）。稀疏侧不在数据集内。
+      <br><br>机制：人口密度=农耕承载力；发展指数=非农附加值人均占有。「密而弱」是错配（农耕锁定）。
     </div>
-    <div style="margin-top:10px">
-      <span class="pill">密度阈值已剔除稀疏侧</span>
-      <span class="pill">依赖已本地化（无外部CDN）</span>
-    </div>
+    <div class="rank" id="rank"><h3 style="margin:0 0 6px">抽样密而弱 · 按省</h3></div>
   </div>
 </div>
-
 <script>
-// 双变量配色矩阵 [发展低/中/高][密度低/中/高]
-const MATRIX=[
-  ['#6b3a3a','#a84545','#ff5a5a'],
-  ['#7a6a3a','#b08a3a','#e0b03a'],
-  ['#3a6b5a','#3a8a7a','#4aa3c0']
-];
-const DEV_LOW=50000, DEV_MID=80000, DEN_LOW=450, DEN_MID=700;
-const devTier=d=> d<DEV_LOW?0 : d<DEV_MID?1 : 2;
-const denTier=d=> d<DEN_LOW?0 : d<DEN_MID?1 : 2;
-
-(function(){
-  const t=document.getElementById('bvtab');
-  let h='';
-  for(let r=2;r>=0;r--){
-    h+='<tr>';
-    for(let c=0;c<3;c++) h+=`<td style="background:${MATRIX[r][c]}"></td>`;
-    h+='</tr>';
-  }
-  t.innerHTML=h;
-})();
-
+const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36'};
 (async()=>{
   let DATA=[];
   try{ DATA=await (await fetch('./data.json')).json(); }catch(e){}
   let geo={type:'FeatureCollection',features:[]};
-  try{ geo=await (await fetch('./china-counties.geojson')).json(); }catch(e){}
+  try{ geo=await (await fetch('./provinces.geojson')).json(); }catch(e){}
 
-  const name2c={};
-  geo.features.forEach(f=>{ if(f.properties&&f.properties.name&&f.properties.center) name2c[f.properties.name]=f.properties.center; });
-
-  const bubbles=DATA.map(d=>{
-    const c=name2c[d.name];
-    if(!c) return null;
-    return {
-      name:d.name, prov:d.prov, dens:d.dens, dev:d.dev, nat:d.nat, type:d.type,
-      value:[c[0],c[1],d.dens,d.dev],
-      itemStyle:{color:MATRIX[devTier(d.dev)][denTier(d.dens)]}
-    };
-  }).filter(Boolean);
-
-  const miss=DATA.length-bubbles.length;
-  if(miss>0) console.warn('未匹配底图质心的区县数：',miss);
+  // 每省密而弱计数
+  const cnt={};
+  DATA.filter(d=>d.type==='poor').forEach(d=>{cnt[d.prov]=(cnt[d.prov]||0)+1;});
+  const maxc=Math.max(1,...Object.values(cnt));
+  // 用省 adcode 前缀匹配计数（provinces.geojson 的 name 如 "河南省"）
+  const data2=geo.features.map(f=>{
+    const nm=f.properties&&f.properties.name; const ad=f.properties&&f.properties.adcode;
+    const prefix=ad?String(ad).slice(0,2):null;
+    // 找该 prefix 对应的 prov char
+    let pc=null; for(const k in PROV_MAP) if(PROV_MAP[k]===prefix) pc=k;
+    const c=pc?cnt[pc]:0;
+    const color = c>0 ? `rgba(255,90,90,${0.25+0.75*c/maxc})` : '#171a21';
+    return {name:nm, prefix, value:c, itemStyle:{color}};
+  });
 
   document.getElementById('loading').style.display='none';
   document.getElementById('map').style.display='block';
-  echarts.registerMap('china', geo);
+  echarts.registerMap('cn', geo);
   const chart=echarts.init(document.getElementById('map'),'dark');
   chart.setOption({
     backgroundColor:'transparent',
-    geo:{
-      map:'china', roam:true, zoom:1.15,
-      itemStyle:{areaColor:'#171a21',borderColor:'#2a2f3a',borderWidth:0.5},
-      emphasis:{disabled:true}
-    },
-    tooltip:{
-      trigger:'item',
-      backgroundColor:'#1e222b', borderColor:'#2a2f3a', textStyle:{color:'#e6e8eb',fontSize:12},
-      formatter:p=>{
-        const d=p.data; if(!d||!d.dens) return '';
-        const mech = d.type==='poor'
-          ? '农耕承载力高→人口密；非农与枢纽弱→人均附加值低（农耕锁定）。'
-          : '同为内陆高密度，枢纽/工业/服务强→人均附加值高，密度不注定贫困。';
-        return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元`+
-               `<br/>自然条件：${d.nat}<br/><span style="color:#ffb454">${mech}</span>`;
-      }
-    },
-    series:[{
-      type:'scatter', coordinateSystem:'geo',
-      data:bubbles,
-      symbolSize:v=> 7 + (v[2]/1400)*20,
-      itemStyle:{opacity:0.9,borderColor:'#0f1115',borderWidth:0.5},
-      emphasis:{scale:1.4}
-    }]
+    tooltip:{trigger:'item',formatter:p=>`<b>${p.name}</b><br/>抽样密而弱区县：${p.data.value} 个`},
+    series:[{type:'map',map:'cn',roam:true,zoom:1.2,
+      itemStyle:{borderColor:'#2a2f3a',borderWidth:0.5},
+      emphasis:{itemStyle:{areaColor:'#2a2f3a'},label:{show:false}},
+      data:data2}]
+  });
+  chart.on('click',p=>{ if(p.data&&p.data.prefix) location.href=`province.html?code=${p.data.prefix}`; });
+
+  // 右侧排行
+  const rank=document.getElementById('rank');
+  Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([pc,n])=>{
+    const el=document.createElement('div'); el.className='r';
+    el.innerHTML=`<span>${pc}</span><span style="color:var(--muted)">${n} 个</span>`;
+    el.onclick=()=>location.href=`province.html?code=${PROV_MAP[pc]}`;
+    rank.appendChild(el);
   });
   window.addEventListener('resize',()=>chart.resize());
 })();
