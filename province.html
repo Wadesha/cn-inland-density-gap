@@ -48,6 +48,9 @@ const DEV_LOW=50000,DEV_MID=80000,DEN_LOW=450,DEN_MID=700;
 const devTier=d=>d<DEV_LOW?0:d<DEV_MID?1:2, denTier=d=>d<DEN_LOW?0:d<DEN_MID?1:2;
 (function(){const t=document.getElementById('bvtab');let h='';for(let r=2;r>=0;r--){h+='<tr>';for(let c=0;c<3;c++)h+=`<td style="background:${MATRIX[r][c]}"></td>`;h+='</tr>';}t.innerHTML=h;})();
 const code=new URLSearchParams(location.search).get('code')||'41';
+// 省 adcode 前缀 → 简称（仅内陆密集省在数据集内）
+const PP2PROV={'13':'冀','14':'晋','32':'苏','34':'皖','36':'赣','37':'鲁','41':'豫','42':'鄂','43':'湘','50':'渝','51':'川','61':'陕'};
+const PROV_CHAR=PP2PROV[code]||'';
 (async()=>{
   let DATA=[];try{DATA=await(await fetch('./data.json')).json();}catch(e){}
   let geo={type:'FeatureCollection',features:[]};
@@ -55,15 +58,15 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   // 省名
   const provName=(geo.features.find(f=>f.properties&&f.properties.level==='province')||{}).properties;
     document.getElementById('title').textContent='县级视图 · '+(provName?provName.name:'')+'（'+code+'）';
-  const name2d={};DATA.forEach(d=>name2d[d.name]=d);
+  const name2d={};DATA.forEach(d=>name2d[d.name+'|'+d.prov]=d);
   // 市 adcode 前缀(4位) → 市名：把"市级样本"下钻着色到其下各县
   const cityNameByPrefix={};
   geo.features.forEach(f=>{const ad=f.properties&&f.properties.adcode,lv=f.properties&&f.properties.level;
     if(lv==='city')cityNameByPrefix[String(ad).slice(0,4)]=f.properties.name;});
-  // 县→有效样本：自身抽样，否则归属的市级抽样
-  const effOf=(nm,ad)=>{ if(name2d[nm])return name2d[nm];
+  // 县→有效样本：自身抽样，否则归属的市级抽样（复合键：省+名，避免跨省同名冲突）
+  const effOf=(nm,ad)=>{ if(name2d[nm+'|'+PROV_CHAR])return name2d[nm+'|'+PROV_CHAR];
     const cp=ad?String(ad).slice(0,4):null;
-    if(cp&&cityNameByPrefix[cp]&&name2d[cityNameByPrefix[cp]])return name2d[cityNameByPrefix[cp]];
+    if(cp&&cityNameByPrefix[cp]&&name2d[cityNameByPrefix[cp]+'|'+PROV_CHAR])return name2d[cityNameByPrefix[cp]+'|'+PROV_CHAR];
     return null; };
   // 市多边形置于县之下，避免盖住县着色
   geo.features.sort((a,b)=>((a.properties.level==='city')?0:1)-((b.properties.level==='city')?0:1));
@@ -71,11 +74,11 @@ const code=new URLSearchParams(location.search).get('code')||'41';
     const nm=f.properties&&f.properties.name, ad=f.properties&&f.properties.adcode;
     const eff=effOf(nm,ad);
     const color=eff?MATRIX[devTier(eff.dev)][denTier(eff.dens)]:'#171a21';
-    return {name:nm, value:eff?[eff.dens,eff.dev]:[0,0], link:eff?eff.name:null, itemStyle:{areaColor:color}};
+    return {name:nm, value:eff?[eff.dens,eff.dev]:[0,0], link:eff?eff.name+'|'+eff.prov:null, itemStyle:{areaColor:color}};
   });
   const matched=mapData.filter(m=>m.itemStyle.areaColor!=='#171a21').length;
   document.getElementById('sub').textContent = matched>0
-    ? `双变量填色：红=密而弱，蓝=密而强；灰底=样本未覆盖。点击区县进入详情。`
+    ? `双变量填色：红=密而弱，蓝=密而强；点击区县进入详情。`
     : `本省份暂无样本数据（请返回选红色省份）。`;
   document.getElementById('loading').style.display='none';
   document.getElementById('map').style.display='block';
@@ -84,7 +87,7 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   chart.setOption({
     backgroundColor:'transparent',
     tooltip:{trigger:'item',backgroundColor:'#1e222b',borderColor:'#2a2f3a',textStyle:{color:'#e6e8eb',fontSize:12},
-      formatter:p=>{const d=p.data.link?name2d[p.data.link]:name2d[p.name];
+      formatter:p=>{const d=p.data.link?name2d[p.data.link]:null;
         if(!d)return `<b>${p.name}</b><br/><span style="color:#8b95a5">样本未覆盖</span>`;
         return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元<br/>自然条件：${d.nat}`;}},
     series:[{type:'map',map:'pv',roam:true,zoom:1.1,
@@ -92,7 +95,7 @@ const code=new URLSearchParams(location.search).get('code')||'41';
       emphasis:{label:{show:false},itemStyle:{areaColor:'#33415a'}},
       data:mapData}]
   });
-  chart.on('click',p=>{if(p.data.link)location.href=`place.html?name=${encodeURIComponent(p.data.link)}`;});
+  chart.on('click',p=>{if(p.data.link){const i=p.data.link.indexOf('|');const nm=p.data.link.slice(0,i),pv=p.data.link.slice(i+1);location.href=`place.html?name=${encodeURIComponent(nm)}&prov=${encodeURIComponent(pv)}`;}});
   window.addEventListener('resize',()=>chart.resize());
 })();
 </script>
