@@ -58,9 +58,9 @@ const code=new URLSearchParams(location.search).get('code')||'41';
   const name2d={};DATA.forEach(d=>name2d[d.name]=d);
   const mapData=geo.features.map(f=>{
     const nm=f.properties&&f.properties.name;const d=name2d[nm];
-    return {name:nm,value:d?[d.dens,d.dev]:[0,0],itemStyle:{color:d?MATRIX[devTier(d.dev)][denTier(d.dens)]:'#171a21'}};
+    return {name:nm,value:d?[d.dens,d.dev]:[0,0],itemStyle:{areaColor:d?MATRIX[devTier(d.dev)][denTier(d.dens)]:'#171a21'}};
   });
-  const matched=mapData.filter(m=>m.itemStyle.color!=='#171a21').length;
+  const matched=mapData.filter(m=>m.itemStyle.areaColor!=='#171a21').length;
   document.getElementById('sub').textContent = matched>0
     ? `双变量填色：红=密而弱，蓝=密而强；灰底=样本未覆盖。点击区县进入详情。`
     : `本省份暂无样本数据（请返回选红色省份）。`;
