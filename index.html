@@ -28,7 +28,7 @@
 <body>
 <header>
   <h1>内陆高密度 · 低发展区带</h1>
-  <div class="sub">省级入口（首屏仅加载省级底图，几百 KB）。颜色越红 = 该省抽样的「密而弱」区县越多。<b style="color:#ffb454">仅红/橙省份有样本</b>，点击进入县级视图。</div>
+  <div class="sub">省级入口（首屏仅加载省级底图，几百 KB）。<span style="color:#ff5a5a">红 = 密而弱省份</span> · <span style="color:#5aa9ff">蓝 = 密而强对照（苏/渝）</span> · 灰 = 无样本（稀疏侧/未纳入）。点击进入县级视图。</div>
 </header>
 <div class="wrap">
   <div class="card"><div id="loading">加载省级底图…</div><div id="map" style="display:none"></div></div>
@@ -43,26 +43,27 @@
   </div>
 </div>
 <script>
-const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36'};
+const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36','晋':'14','渝':'50'};
 (async()=>{
   let DATA=[];
   try{ DATA=await (await fetch('./data.json')).json(); }catch(e){}
   let geo={type:'FeatureCollection',features:[]};
   try{ geo=await (await fetch('./provinces.geojson')).json(); }catch(e){}
 
-  // 每省密而弱计数
-  const cnt={};
-  DATA.filter(d=>d.type==='poor').forEach(d=>{cnt[d.prov]=(cnt[d.prov]||0)+1;});
-  const maxc=Math.max(1,...Object.values(cnt));
+  // 每省密而弱 / 密而强计数
+  const cntPoor={}, cntRich={};
+  DATA.forEach(d=>{ if(d.type==='poor') cntPoor[d.prov]=(cntPoor[d.prov]||0)+1; if(d.type==='rich') cntRich[d.prov]=(cntRich[d.prov]||0)+1; });
+  const maxPoor=Math.max(1,...Object.values(cntPoor));
   // 用省 adcode 前缀匹配计数（provinces.geojson 的 name 如 "河南省"）
   const data2=geo.features.map(f=>{
     const nm=f.properties&&f.properties.name; const ad=f.properties&&f.properties.adcode;
     const prefix=ad?String(ad).slice(0,2):null;
-    // 找该 prefix 对应的 prov char
     let pc=null; for(const k in PROV_MAP) if(PROV_MAP[k]===prefix) pc=k;
-    const c=pc?cnt[pc]:0;
-    const color = c>0 ? `rgba(255,90,90,${0.25+0.75*c/maxc})` : '#171a21';
-    return {name:nm, prefix, value:c, itemStyle:{areaColor:color}};
+    const poor=pc?cntPoor[pc]:0, rich=pc?cntRich[pc]:0;
+    let color='#171a21';
+    if(poor>0) color=`rgba(255,90,90,${0.25+0.75*poor/maxPoor})`;
+    else if(rich>0) color='rgba(90,169,255,0.7)';
+    return {name:nm, prefix, value:poor, poor, rich, itemStyle:{areaColor:color}};
   });
 
   document.getElementById('loading').style.display='none';
@@ -71,7 +72,8 @@ const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42
   const chart=echarts.init(document.getElementById('map'),'dark');
   chart.setOption({
     backgroundColor:'transparent',
-    tooltip:{trigger:'item',formatter:p=>`<b>${p.name}</b><br/>抽样密而弱区县：${p.data.value} 个`},
+    tooltip:{trigger:'item',formatter:p=>{const poor=p.data.poor||0,rich=p.data.rich||0;
+      return `<b>${p.name}</b><br/>密而弱区县：${poor} 个<br/>密而强区县：${rich} 个`+(poor+rich===0?'<br/><span style="color:#8b95a5">无样本（稀疏侧/未纳入）</span>':'');}},
     series:[{type:'map',map:'cn',roam:true,zoom:1.2,
       itemStyle:{borderColor:'#2a2f3a',borderWidth:0.5},
       emphasis:{itemStyle:{areaColor:'#2a2f3a'},label:{show:false}},
@@ -79,14 +81,26 @@ const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42
   });
   chart.on('click',p=>{ if(p.data&&p.data.prefix) location.href=`province.html?code=${p.data.prefix}`; });
 
-  // 右侧排行
+  // 右侧排行：密而弱省份（红）+ 密而强对照省份（蓝）
   const rank=document.getElementById('rank');
-  Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([pc,n])=>{
+  const poorProvs=Object.entries(cntPoor).filter(([k,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const richProvs=Object.entries(cntRich).filter(([k,v])=>v>0 && !(cntPoor[k]>0)).sort((a,b)=>b[1]-a[1]);
+  rank.insertAdjacentHTML('beforeend','<div style="color:var(--weak);font-size:12px;margin:4px 0 2px">密而弱省份</div>');
+  poorProvs.forEach(([pc,n])=>{
     const el=document.createElement('div'); el.className='r';
     el.innerHTML=`<span>${pc}</span><span style="color:var(--muted)">${n} 个</span>`;
     el.onclick=()=>location.href=`province.html?code=${PROV_MAP[pc]}`;
     rank.appendChild(el);
   });
+  if(richProvs.length){
+    rank.insertAdjacentHTML('beforeend','<div style="color:var(--rich);font-size:12px;margin:10px 0 2px">密而强对照省份</div>');
+    richProvs.forEach(([pc,n])=>{
+      const el=document.createElement('div'); el.className='r';
+      el.innerHTML=`<span>${pc}</span><span style="color:var(--muted)">${n} 个</span>`;
+      el.onclick=()=>location.href=`province.html?code=${PROV_MAP[pc]}`;
+      rank.appendChild(el);
+    });
+  }
   window.addEventListener('resize',()=>chart.resize());
 })();
 </script>
