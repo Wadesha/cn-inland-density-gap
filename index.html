@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>内陆高密度·低发展区带 · 双变量地图</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e6e8eb;--muted:#8b95a5;--accent:#ffb454}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+  header{padding:16px 22px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:18px;font-weight:600}
+  .sub{color:var(--muted);margin-top:6px;font-size:12.5px}
+  .wrap{display:grid;grid-template-columns:1fr 280px;gap:14px;padding:14px 22px;align-items:start}
+  @media(max-width:880px){.wrap{grid-template-columns:1fr}}
+  #map{width:100%;height:620px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .legend h3{margin:0 0 10px;font-size:13px;color:var(--accent)}
+  table.bv{border-collapse:collapse;margin:0 auto}
+  table.bv td{width:34px;height:28px;border:1px solid var(--bg)}
+  .ax{color:var(--muted);font-size:11px;text-align:center;margin-top:4px}
+  .note{color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:12px}
+  #loading{padding:40px;text-align:center;color:var(--muted)}
+  .pill{display:inline-block;background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:2px 9px;font-size:11px;color:var(--muted);margin:2px 4px 2px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>内陆高密度 · 低发展区带 · 双变量地图</h1>
+  <div class="sub">考察范围：胡线以东的内陆。气泡位置=真实县界质心，颜色=密度×发展双变量；<b style="color:#ff5a5a">红=密而弱（重点）</b>，蓝=密而强（同内陆对照）。稀疏区县不在数据集内。</div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div id="loading">正在加载县级底图与数据…</div>
+    <div id="map" style="display:none"></div>
+  </div>
+
+  <div class="card legend">
+    <h3>双变量着色（看红色角）</h3>
+    <table class="bv" id="bvtab"></table>
+    <div class="ax">← 人口密度：低 · 中 · 高 →</div>
+    <div class="ax">↑ 发展指数（人均GDP）：低 · 中 · 高</div>
+    <div class="note">
+      机制：人口密度的自然成因=农耕承载力（平坦冲积土+水/灌+积温两熟）；发展指数=非农附加值人均占有。
+      二者是两条因果链，「密而弱」是错配而非矛盾——农耕锁定把劳动力钉在农业上。
+      蓝点为同内陆高密度但枢纽/工业强的区县，证明密度不注定贫困。
+      <br><br>
+      ⚠️ 数据为示意样本（量级近似，非精确统计）。下一步接入七普人口密度+统计年鉴县级人均GDP/非农就业，并扩到全县。
+    </div>
+    <div style="margin-top:10px">
+      <span class="pill">密度阈值已剔除稀疏侧</span>
+      <span class="pill">底图运行时从 DataV 加载</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// 双变量配色矩阵 [发展低/中/高][密度低/中/高]
+const MATRIX=[
+  ['#6b3a3a','#a84545','#ff5a5a'],
+  ['#7a6a3a','#b08a3a','#e0b03a'],
+  ['#3a6b5a','#3a8a7a','#4aa3c0']
+];
+const DEV_LOW=50000, DEV_MID=80000, DEN_LOW=450, DEN_MID=700;
+const devTier=d=> d<DEV_LOW?0 : d<DEV_MID?1 : 2;
+const denTier=d=> d<DEN_LOW?0 : d<DEN_MID?1 : 2;
+
+// 图例表
+(function(){
+  const t=document.getElementById('bvtab');
+  let h='';
+  for(let r=2;r>=0;r--){ // 发展高在上
+    h+='<tr>';
+    for(let c=0;c<3;c++) h+=`<td style="background:${MATRIX[r][c]}"></td>`;
+    h+='</tr>';
+  }
+  t.innerHTML=h;
+})();
+
+const PROV=[110000,120000,130000,140000,150000,210000,220000,230000,310000,320000,
+  330000,340000,350000,360000,370000,410000,420000,430000,440000,450000,460000,
+  500000,510000,520000,530000,540000,610000,620000,630000,640000,650000];
+
+async function loadChina(){
+  const feats=[];
+  for(const code of PROV){
+    try{
+      const r=await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`);
+      const j=await r.json();
+      if(j&&j.features) feats.push(...j.features);
+    }catch(e){ /* 单省失败忽略 */ }
+  }
+  return {type:'FeatureCollection',features:feats};
+}
+
+(async()=>{
+  let DATA=[];
+  try{ DATA=await (await fetch('./data.json')).json(); }catch(e){}
+  const geo=await loadChina();
+  const name2c={};
+  geo.features.forEach(f=>{ if(f.properties&&f.properties.name&&f.properties.center) name2c[f.properties.name]=f.properties.center; });
+
+  const bubbles=DATA.map(d=>{
+    const c=name2c[d.name];
+    if(!c) return null;
+    return {
+      name:d.name, prov:d.prov, dens:d.dens, dev:d.dev, nat:d.nat, type:d.type,
+      value:[c[0],c[1],d.dens,d.dev],
+      itemStyle:{color:MATRIX[devTier(d.dev)][denTier(d.dens)]}
+    };
+  }).filter(Boolean);
+
+  document.getElementById('loading').style.display='none';
+  document.getElementById('map').style.display='block';
+  const chart=echarts.init(document.getElementById('map'),'dark');
+  chart.setOption({
+    backgroundColor:'transparent',
+    geo:{
+      map:'china', roam:true, zoom:1.15,
+      itemStyle:{areaColor:'#171a21',borderColor:'#2a2f3a',borderWidth:0.5},
+      emphasis:{disabled:true}
+    },
+    tooltip:{
+      trigger:'item',
+      backgroundColor:'#1e222b', borderColor:'#2a2f3a', textStyle:{color:'#e6e8eb',fontSize:12},
+      formatter:p=>{
+        const d=p.data; if(!d||!d.dens) return '';
+        const mech = d.type==='poor'
+          ? '农耕承载力高→人口密；非农与枢纽弱→人均附加值低（农耕锁定）。'
+          : '同为内陆高密度，枢纽/工业/服务强→人均附加值高，密度不注定贫困。';
+        return `<b>${d.name}</b> ${d.prov}<br/>人口密度：${d.dens} 人/km²<br/>人均GDP：${d.dev.toLocaleString()} 元`+
+               `<br/>自然条件：${d.nat}<br/><span style="color:#ffb454">${mech}</span>`;
+      }
+    },
+    series:[{
+      type:'scatter', coordinateSystem:'geo',
+      data:bubbles,
+      symbolSize:v=> 7 + (v[2]/1400)*20,
+      itemStyle:{opacity:0.9,borderColor:'#0f1115',borderWidth:0.5},
+      emphasis:{scale:1.4}
+    }]
+  });
+  window.addEventListener('resize',()=>chart.resize());
+})();
+</script>
+</body>
+</html>
