@@ -14,6 +14,7 @@
   .badge{font-size:11px;padding:2px 9px;border-radius:20px;margin-left:8px;vertical-align:middle}
   .b-poor{background:rgba(255,90,90,.16);color:var(--weak);border:1px solid var(--weak)}
   .b-rich{background:rgba(90,169,255,.16);color:var(--rich);border:1px solid var(--rich)}
+  .b-mid{background:rgba(224,176,58,.16);color:#e0b03a;border:1px solid #e0b03a}
   a{color:var(--accent);text-decoration:none;font-size:13px}
   .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
   .wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 22px;align-items:start}
@@ -72,17 +73,20 @@ const MATRIX=[['#6b3a3a','#a84545','#ff5a5a'],['#7a6a3a','#b08a3a','#e0b03a'],['
 const DEV_LOW=50000,DEV_MID=80000,DEN_LOW=450,DEN_MID=700;
 const devTier=d=>d<DEV_LOW?0:d<DEV_MID?1:2, denTier=d=>d<DEN_LOW?0:d<DEN_MID?1:2;
 const TIER=['低','中','高'];
-const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36'};
+const PROV_MAP={'豫':'41','皖':'34','鲁':'37','冀':'13','苏':'32','鄂':'42','湘':'43','川':'51','陕':'61','赣':'36','晋':'14','渝':'50'};
 const name=decodeURIComponent(new URLSearchParams(location.search).get('name')||'');
+const prov=decodeURIComponent(new URLSearchParams(location.search).get('prov')||'');
 (async()=>{
   let DATA=[];try{DATA=await(await fetch('./data.json')).json();}catch(e){}
-  const d=DATA.find(x=>x.name===name);
+  const d=DATA.find(x=>x.name===name && (prov?x.prov===prov:true));
   if(!d){document.getElementById('loading').textContent='未找到：'+name;return;}
   const prefix=PROV_MAP[d.prov]||'41';
   let geo={type:'FeatureCollection',features:[]};
   try{geo=await(await fetch(`./provinces/${prefix}.geojson`)).json();}catch(e){}
 
-  document.getElementById('title').innerHTML=`${d.name} <span class="badge ${d.type==='poor'?'b-poor':'b-rich'}">${d.type==='poor'?'密而弱':'密而强'}</span>`;
+  const badgeCls=d.type==='poor'?'b-poor':d.type==='rich'?'b-rich':'b-mid';
+  const badgeTxt=d.type==='poor'?'密而弱':d.type==='rich'?'密而强':'中间型';
+  document.getElementById('title').innerHTML=`${d.name} <span class="badge ${badgeCls}">${badgeTxt}</span>`;
   document.getElementById('sub').textContent=`${d.prov} · 人口密度 ${d.dens} 人/km² · 人均GDP ${d.dev.toLocaleString()} 元`;
   document.getElementById('back').href=`province.html?code=${prefix}`;
   document.getElementById('loading').style.display='none';
@@ -103,7 +107,9 @@ const name=decodeURIComponent(new URLSearchParams(location.search).get('name')||
   document.getElementById('nat').textContent=d.nat;
   const mech=d.type==='poor'
     ? '农耕承载力高 → 历史人口密；非农产业与枢纽可达性弱 → 人均附加值低。土地太能养人，反而把劳动力钉在农业上（农耕锁定）。密度量「能养多少人」，发展量「每人创造多少非农业价值」。'
-    : '同为内陆高密度，但枢纽/工业/服务结构强 → 人均附加值高。证明密度本身不注定贫困，结构才分化发展。';
+    : d.type==='rich'
+    ? '同为内陆高密度，但枢纽/工业/服务结构强 → 人均附加值高。证明密度本身不注定贫困，结构才分化发展。'
+    : '密度与发展居中：既非最密，发展也未达高强度，处于「密而弱」与「密而强」之间的过渡形态。';
   const me=document.getElementById('mech');me.className='mech'+(d.type==='rich'?' rich':'');me.textContent=mech;
 
   // 对照
